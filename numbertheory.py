@@ -24,6 +24,8 @@ _mrpt_num_trials = 10 # number of bases to test
 def is_probable_prime(n,numtrials=10):
     """
     Miller-Rabin primality test. CODE PLAGIARIZED!!!! 
+    minor modification of the code in:
+    https://rosettacode.org/wiki/Miller%E2%80%93Rabin_primality_test#Python
  
     A return value of False means n is certainly not prime. A return value of
     True means n is very likely a prime.
