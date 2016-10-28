@@ -234,8 +234,6 @@ class directed_graph:
         dist[node_start] = 0
         for x in nodeslice:
             for nei,length in self.__nodetoN[x].items():
-                if nei not in nodeslice:
-                    raise Exception('bug in your topsort :)')
                 if dist[x]+length < dist[nei]:
                     dist[nei] = dist[x]+length
                     pred[nei] = x
