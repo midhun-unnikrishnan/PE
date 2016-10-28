@@ -334,8 +334,7 @@ class directed_graph:
             Use for finding shortest path in in a graph with positive edge
             weights containing cycles.
             Priority queue is implemented with a heap, resulting in 
-            a complexity of O(VlogV), although the lookup maintained 
-            in this implementation (nodepos) adds an extra factor of logV
+            a complexity of O(VlogV)
         '''
         nodes = sorted(self.__nodes)
         d = [(np.inf,x) for x in nodes] # priority queue
