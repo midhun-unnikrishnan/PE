@@ -8,6 +8,7 @@ Created on Wed Oct 12 21:46:22 2016
 from numbers import Number
 import numpy as np
 import copy as copy
+from time import time
 
 class directed_graph:
     '''Undirected finite graph represented as an adjacency list.
@@ -197,22 +198,52 @@ class directed_graph:
         logs = {x:[None,None] for x in self.__nodes}
         
         counter = 0
+        iterstack = []
         
-        def iterate(node):
-            nonlocal self,done,logs,counter
-            if done[node]:
-                return
-            done[node] = True
-            counter += 1
-            logs[node][0] = counter
-            for neighbor in self.__nodetoN[node].keys():
-                iterate(neighbor)
-            counter += 1
-            logs[node][1] = counter
-            
         for node in self.__nodes:
-            iterate(node)    
-            
+            if done[node]:
+                continue
+            counter += 1
+            iterstack.append([node,counter])
+            done[node] = True
+            for nei in self.__nodetoN[node].keys():
+                if not done[nei]:
+                    iterstack.append([nei,None])
+            while len(iterstack)>0:
+                counter += 1
+                task = iterstack[-1]
+                if task[1] != None: # you're done.
+                    logs[task[0]] = [task[1],counter]
+                    iterstack.pop()
+                else: # add children to stack and continue
+                    task[1] = counter
+                    for nei in self.__nodetoN[task[0]].keys():
+                        if not done[nei]:
+                            iterstack.append([nei,None,None])
+                            done[nei] = True
+                            
+#        recursive form of DFS: lovely to read, but ran into 
+#        maximum recursive depth issues. 
+#        Equally elegant iterstack used above is a replacement
+#        def iterate(node):
+#            nonlocal self,done,logs,counter
+#            if done[node]:
+#                return
+#            done[node] = True
+#            counter += 1
+#            logs[node][0] = counter
+#            for neighbor in self.__nodetoN[node].keys():
+#                try:
+#                    iterate(neighbor)
+#                except RecursionError:
+#                    print(node,neighbor,done[node],done[neighbor])
+#                    raise Exception('doesnt work')
+#            counter += 1
+#            logs[node][1] = counter
+#            
+#        for node in self.__nodes:
+#            iterate(node)    
+#            
         return logs
     
     def Topsort(self,force_eval=False):
@@ -225,6 +256,12 @@ class directed_graph:
         self.__istopsorted = True
                     
     def dagpath(self,node_start,node_fin):
+        ''' User advised to use wrapper: shortest_path()
+            Use for finding shortest path in directed acyclic graph
+            with V vertices and E edges
+            complexity = O(V log V + E)
+            (V log V is the complexity of node sort in Topsort())
+        '''
         self.Topsort()
         istart = self.__nodes.index(node_start)
         iend = self.__nodes.index(node_fin)
@@ -243,15 +280,110 @@ class directed_graph:
             stack.append(temp)
         stack.reverse()
         return (dist[node_fin],stack)
+        
+    def __decrease_key(self,pos,heap,nodepos):
+        parent = pos
+        # swaps are only done upwards since key is decreased
+        while parent > 0: 
+            parent = (parent-1)//2
+            if heap[parent][0]>heap[pos][0]:
+                # switch nodes in heap
+                temp = heap[parent]
+                heap[parent] = heap[pos]
+                heap[pos] = temp
+                nodepos[heap[pos][1]] = pos
+                nodepos[heap[parent][1]] = parent
+                pos = parent
+            else:
+                break
             
+    def __heap_pop(self,heap,nodepos):
+        lheap = len(heap)
+        if lheap == 0:
+            raise Exception('Cant pop empty heap')
+        elif lheap == 1:
+            nodepos[heap[0][1]] = None
+            return heap.pop()
+        ind = 0
+        pop = heap[ind]
+        nodepos[pop[1]] = None
+        heap[ind] = heap[-1]
+        del heap[-1] 
+        lheap -= 1
+        nodepos[heap[ind][1]] = ind
+        
+        while 2*ind+1 < lheap:
+            if 2*ind+2 == lheap or heap[2*ind+1][0]<heap[2*ind+2][0]:
+                child = 2*ind+1
+            else:
+                child = 2*ind+2
+            if heap[ind][0]>heap[child][0]:
+                # switch nodes in heap
+                temp = heap[ind]
+                heap[ind] = heap[child]
+                heap[child] = temp
+                nodepos[heap[ind][1]]=ind
+                nodepos[heap[child][1]]=child
+                ind = child
+            else:
+                break
+        return pop
+            
+    def dijkstra(self,nodestart,node_fin):
+        ''' User advised to use wrapper: shortest_path()
+            Use for finding shortest path in in a graph with positive edge
+            weights containing cycles.
+            Priority queue is implemented with a heap, resulting in 
+            a complexity of O(VlogV), although the lookup maintained 
+            in this implementation (nodepos) adds an extra factor of logV
+        '''
+        nodes = sorted(self.__nodes)
+        d = [(np.inf,x) for x in nodes] # priority queue
+        
+        nodepos = {x:y for y,x in enumerate(nodes)} # required for lookup later
+        pos = nodepos[nodestart]
+        d[pos] = (0,nodestart)
+        self.__decrease_key(pos,d,nodepos)
+        dist = {x[1]:x[0] for x in d}
+        prev = {x[1]:None for x in d}
+        
+        minpop_time = 0
+        minfind_time = 0
+        rebalance_time = 0
+        while d != []:
+            t = time()
+            distmin,min_node = self.__heap_pop(d,nodepos)
+            minpop_time += time()-t
+            
+            for nei,length in self.__nodetoN[min_node].items():
+                if dist[nei] > distmin +length and nei != min_node:
+                    t = time()
+                    # pos = self.__bsearch(nei,nodes)
+                    pos = nodepos[nei]
+                    minfind_time += time()-t
+                    t = time()
+                    dist[nei] = dist[min_node]+length
+                    prev[nei] = min_node
+                    d[pos] = (dist[nei],nei) 
+                    self.__decrease_key(pos,d,nodepos)
+                    rebalance_time += time()-t
+        total = dist[node_fin]
+        path = [node_fin]
+        while path[-1] != nodestart:
+            path.append(prev[path[-1]])
+        path.reverse()
+        return total,path,minpop_time,minfind_time,rebalance_time
+        
     def ford_fulkerson(self,node_start,node_fin):
         raise Exception('FF not implemented')
         
     def shortest_path(self,node_start,node_fin):
         if self.isdag():
-            return self.dagpath(node_start,node_fin) # dfs shortest path O(|V|)
+            return self.dagpath(node_start,node_fin) # dag shortest path O(|V|+|E|)
         else:
-            return self.ford_fulkerson(node_start,node_fin) # dijkstra algorithm is O(|V||E|)
+            if self.ispositive(): # dijkstra for positive edges O(|V|log|V| + |E|)
+                return self.dijkstra(node_start,node_fin)   
+            return self.ford_fulkerson(node_start,node_fin) 
     
     def nodes(self):
         return self.__nodes.copy()
