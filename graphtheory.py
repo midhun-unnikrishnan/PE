@@ -12,7 +12,7 @@ import copy as copy
 class directed_graph:
     '''Undirected finite graph represented as an adjacency list.
     Node names can be any dictionary key type, and the entire information
-    is represented as a two-level nested (symmetric) dictionary.
+    is represented as a two-level nested dictionary.
     '''
     __nodes = []
     __nodetoN = dict()
@@ -20,8 +20,9 @@ class directed_graph:
     __isdag = None # is the graph acyclic
     __istree = None # is the graph a tree
     __ispositive = None # are all edge weights positive
-    __istopsorted = None # if the graph is acyclic, is self.__nodes in
+    __istopsorted = False # if the graph is acyclic, is self.__nodes in
                          # topological order
+    __dfslog = {}
     
     # multiple-edges between two nodes are currently represented using weightings
     # on edges, viz. the leaf n represents n edges. The class currently does
@@ -35,7 +36,10 @@ class directed_graph:
         '''
         self.addnodes(node2N)
         
-    def addnodes(self,node2N:dict={}):
+    def empty(self):
+        self.__init__({})
+        
+    def addnodes(self,node2N:dict={},validate = False):
         '''add multiple new nodes and connections. 
         If a graph is being defined without edge-weights (i.e. weight = 1),
         then a dictionary of the form {node1:[neigh1,neigh2,...],key2:...}
@@ -60,9 +64,18 @@ class directed_graph:
             else:
                 raise Exception('Invalid dictionary used to define graph')
             
-        self.__nodes = [x for x in self.__nodetoN.keys()]
-        self.validate()
-        
+        self.__nodes.extend(node2N.keys())
+        if validate:
+            self.validate()
+            
+        # now that the graph structure has changed, the following must be recomputed
+        # on demand
+        self.__isdag = None
+        self.__istopsorted = False
+        self.__istree = None
+        self.__ispositive = None
+        self.__dfslog = {}
+
         #symmetrize
 #        try:
 #            for key in node2N.keys():
@@ -73,20 +86,33 @@ class directed_graph:
 
     def add_edge(self,node1,node2,weight=1):
         self.__nodetoN[node1][node2] = weight + self.__nodetoN[node1].get(node2,0)
+        # now that the graph structure has changed, the following must be recomputed
+        # on demand
+        self.__isdag = None
+        self.__istopsorted = False
+        self.__istree = None
+        if weight < 0 and self.__ispositive: 
+            self.__ispositive = False  # not anymore
+        self.__dfslog = {}
         # self.__nodetoN[node2][node1] = self.__nodetoN[node1][node2]
         
-    def delete_edge(self,node1,node2,weight=1,ignore_nonexistent = False):
-        if ignore_nonexistent:
-            self.__nodetoN[node1][node2] = -weight + self.__nodetoN[node1].get(node2,0)
-        else:
-            try:
-                self.__nodetoN[node1][node2] = -weight + self.__nodetoN[node1][node2]
-            except KeyError:
-                raise Exception('Cannot delete a non-existent edge')
+    def delete_edge(self,node1,node2,weight=1):
+        try:
+            self.__nodetoN[node1][node2] = -weight + self.__nodetoN[node1][node2]
+        except KeyError:
+            raise Exception('Cannot delete a non-existent edge')
         # self.__nodetoN[node2][node1] = self.__nodetoN[node1][node2]
         if abs(self.__nodetoN[node2][node1]) < 1e-12:
             del self.__nodetoN[node2][node1]
             # del self.__nodetoN[node1][node2]
+        # now that the graph structure has changed, the following must be recomputed
+        # on demand
+        self.__isdag = None # <--- in case graph has one cycle which is broken
+        # self.__istopsorted = False <-- top sorting remains valid 
+        self.__istree = None # <--- 
+        if weight < 0 and self.__ispositive: 
+            self.__ispositive = False  # not anymore
+        self.__dfslog = {}
             
     def validate(self):
         for key,val in self.__nodetoN.items():
@@ -96,7 +122,9 @@ class directed_graph:
                 del val[key] # self-loops are removed
             for key2,val2 in val.items():
                 if key2 not in self.__nodes or not isinstance(val2,Number):
-                    raise Exception('Invalid dictionary used to define graph')
+                    raise Exception('Invalid dictionary used to define graph') 
+        if set(self.__nodetoN.keys()) != set(self.__nodes):
+            raise Exception('Internal mismatch between node and neighbour lists')    
 #                elif self.__nodetoN[key2][key] != val2:
 #                    raise Exception('Node neighbours are not defined symmetrically')
         
@@ -134,12 +162,21 @@ class directed_graph:
         '''
         for node in nodesD:
             del self.__nodetoN[node]
-        self.__nodes = [x for x in self.__nodetoN.keys()]
+            self.__nodes.remove(node)
+            
         for key in self.__nodes:
             self.__nodetoN[key] = {x:y for x,y in self.__nodetoN[key].items() if \
             x not in nodesD}
         if forcevalidate: # for debugging if required
             self.validate()
+        
+        # now that the graph structure has changed, the following must be recomputed
+        # on demand
+        self.__isdag = None
+        self.__istopsorted = False 
+        self.__istree = None
+        self.__ispositive = None
+        self.__dfslog = {}
     
     def delnode(self,node,forcevalidate=False):
         self.delnodes([node],forcevalidate)
@@ -149,44 +186,72 @@ class directed_graph:
         m = sum([sum(x.values()) for x in self.__nodetoN.values()])//2
         return (n,m)
     
-    def DFS(self):
+    def DFS(self,force_eval=False):
         ''' performs depth-first search on the graph. Outputs a dictionary
             with in and out times of the search at each node
         '''
+        if len(self.__dfslog) and not force_eval:
+            return self.__dfslog
+            
         done = {x:False for x in self.__nodes}
         logs = {x:[None,None] for x in self.__nodes}
+        
         counter = 0
+        
         def iterate(node):
             nonlocal self,done,logs,counter
             if done[node]:
                 return
+            done[node] = True
             counter += 1
             logs[node][0] = counter
             for neighbor in self.__nodetoN[node].keys():
-                iterate(node)
+                iterate(neighbor)
             counter += 1
             logs[node][1] = counter
-            return
+            
+        for node in self.__nodes:
+            iterate(node)    
+            
         return logs
     
-    def istopsorted(self,force_eval=False):
-        if self.__istopsorted == None or force_eval:
-            if not self.isdag():
-                return None # no concept of topological ordering in non-dag graphs
-                # except strongly connected components, but we'll let that be.
-            return self.__istopsorted
-        else:
-            return self.__istopsorted
-            
-    def dijkstra(self,node_start,node_fin):
-        raise Exception('dijkstra not implemented')
+    def Topsort(self,force_eval=False):
+        if not self.isdag():
+            raise Exception('Graph should be acyclic to allow linearization')
+        if self.__istopsorted and not force_eval:
+            return
+        logs = self.DFS()
+        self.__nodes = sorted(self.nodes(),key=lambda x:logs[x][1],reverse=True)
+        self.__istopsorted = True
+                    
+    def dagpath(self,node_start,node_fin):
+        self.Topsort()
+        istart = self.__nodes.index(node_start)
+        iend = self.__nodes.index(node_fin)
+        nodeslice = self.__nodes[istart:iend+1]
+        dist = {x:np.inf for x in nodeslice}
+        pred = {x:None for x in nodeslice}
+        dist[node_start] = 0
+        for x in nodeslice:
+            for nei,length in self.__nodetoN[x].items():
+                if nei not in nodeslice:
+                    raise Exception('bug in your topsort :)')
+                if dist[x]+length < dist[nei]:
+                    dist[nei] = dist[x]+length
+                    pred[nei] = x
+        stack = [node_fin]
+        while stack[-1] != node_start:
+            temp = pred[stack[-1]]
+            stack.append(temp)
+        stack.reverse()
+        return (dist[node_fin],stack)
             
     def ford_fulkerson(self,node_start,node_fin):
         raise Exception('FF not implemented')
         
     def shortest_path(self,node_start,node_fin):
         if self.isdag():
-            return self.dijkstra(node_start,node_fin) # dijkstra algorithm is O(|V||E|)
+            return self.dagpath(node_start,node_fin) # dfs shortest path O(|V|)
         else:
             return self.ford_fulkerson(node_start,node_fin) # dijkstra algorithm is O(|V||E|)
     
@@ -198,9 +263,19 @@ class directed_graph:
         
     def isdag(self,force_eval=False):
         if self.__isdag == None or force_eval:
-            raise Exception('isdag unimplemented')
-        else:
-            return self.__isdag
+            flag = True
+            logs = self.DFS()
+            for node in self.__nodes:
+                for k in self.__nodetoN[node].keys():
+                    if logs[k][0]<logs[node][0] and logs[k][1]>logs[node][1]:
+                        flag = False # found a back edge
+                        break
+                else:
+                    continue
+                break
+            self.__isdag = flag
+            
+        return self.__isdag
     
     def ispositive(self,force_eval=False):
         if self.__ispositive == None or force_eval:
@@ -212,22 +287,14 @@ class directed_graph:
                         break
                 else:
                     continue
-                break
-        else:
-            return self.__ispositive
+                break 
+        return self.__ispositive
         
     def istree(self,force_eval=False):
         if self.__istree == None or force_eval:
             raise Exception('istree unimplemented')
         else:
-            return self.__istree
-    
-    def assertdag(self,bval:bool=True):
-        self.__isdag = bval
-    
-    def asserttree(self,bval:bool=True):
-        self.__istree = bval
-    
+            return self.__istree    
 #        
 #    def rand_edge(self,useweights=True):
 #        ''' choose a random edge from the graph. If useweights = True
