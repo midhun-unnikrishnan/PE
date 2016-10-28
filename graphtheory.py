@@ -11,7 +11,7 @@ import copy as copy
 from time import time
 
 class directed_graph:
-    '''Undirected finite graph represented as an adjacency list.
+    '''Directed finite graph represented as an adjacency list.
     Node names can be any dictionary key type, and the entire information
     is represented as a two-level nested dictionary.
     '''
