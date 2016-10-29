@@ -8,7 +8,6 @@ Created on Wed Oct 12 21:46:22 2016
 from numbers import Number
 import numpy as np
 import copy as copy
-from time import time
 
 class directed_graph:
     '''Directed finite graph represented as an adjacency list.
@@ -209,6 +208,7 @@ class directed_graph:
             for nei in self.__nodetoN[node].keys():
                 if not done[nei]:
                     iterstack.append([nei,None])
+                    done[nei] = True
             while len(iterstack)>0:
                 counter += 1
                 task = iterstack[-1]
@@ -219,7 +219,7 @@ class directed_graph:
                     task[1] = counter
                     for nei in self.__nodetoN[task[0]].keys():
                         if not done[nei]:
-                            iterstack.append([nei,None,None])
+                            iterstack.append([nei,None])
                             done[nei] = True
                             
 #        recursive form of DFS: lovely to read, but ran into 
@@ -261,10 +261,12 @@ class directed_graph:
             with V vertices and E edges
             complexity = O(V log V + E)
             (V log V is the complexity of node sort in Topsort())
+            node_fin is assumed to be a list of nodes, and 
+            node_start is assumed to be a single node
         '''
         self.Topsort()
         istart = self.__nodes.index(node_start)
-        iend = self.__nodes.index(node_fin)
+        iend = max([self.__nodes.index(x) for x in node_fin])
         nodeslice = self.__nodes[istart:iend+1]
         dist = {x:np.inf for x in nodeslice}
         pred = {x:None for x in nodeslice}
@@ -274,12 +276,15 @@ class directed_graph:
                 if dist[x]+length < dist[nei]:
                     dist[nei] = dist[x]+length
                     pred[nei] = x
-        stack = [node_fin]
-        while stack[-1] != node_start:
-            temp = pred[stack[-1]]
-            stack.append(temp)
-        stack.reverse()
-        return (dist[node_fin],stack)
+        result = []
+        for nf in node_fin:
+            stack = [nf]
+            while stack[-1] != node_start:
+                temp = pred[stack[-1]]
+                stack.append(temp)
+            stack.reverse()
+            result.append((dist[nf],stack))
+        return result
         
     def __decrease_key(self,pos,heap,nodepos):
         parent = pos
@@ -333,8 +338,10 @@ class directed_graph:
         ''' User advised to use wrapper: shortest_path()
             Use for finding shortest path in in a graph with positive edge
             weights containing cycles.
-            Priority queue is implemented with a heap, resulting in 
+            Priority queue is implemented with a binary heap, resulting in 
             a complexity of O(VlogV)
+            node_fin is assumed to be a list of nodes, and 
+            node_start is assumed to be a single node
         '''
         nodes = sorted(self.__nodes)
         d = [(np.inf,x) for x in nodes] # priority queue
@@ -346,44 +353,45 @@ class directed_graph:
         dist = {x[1]:x[0] for x in d}
         prev = {x[1]:None for x in d}
         
-        minpop_time = 0
-        minfind_time = 0
-        rebalance_time = 0
         while d != []:
-            t = time()
-            distmin,min_node = self.__heap_pop(d,nodepos)
-            minpop_time += time()-t
-            
+            distmin,min_node = self.__heap_pop(d,nodepos)            
             for nei,length in self.__nodetoN[min_node].items():
                 if dist[nei] > distmin +length and nei != min_node:
-                    t = time()
                     # pos = self.__bsearch(nei,nodes)
                     pos = nodepos[nei]
-                    minfind_time += time()-t
-                    t = time()
                     dist[nei] = dist[min_node]+length
                     prev[nei] = min_node
                     d[pos] = (dist[nei],nei) 
                     self.__decrease_key(pos,d,nodepos)
-                    rebalance_time += time()-t
-        total = dist[node_fin]
-        path = [node_fin]
-        while path[-1] != nodestart:
-            path.append(prev[path[-1]])
-        path.reverse()
-        return total,path,minpop_time,minfind_time,rebalance_time
+        result = []
+        for nf in node_fin:
+            total = dist[nf]
+            path = [nf]
+            while path[-1] != nodestart:
+                path.append(prev[path[-1]])
+            path.reverse()
+            result.append((total,path))
+        return result
         
     def ford_fulkerson(self,node_start,node_fin):
         raise Exception('FF not implemented')
         
     def shortest_path(self,node_start,node_fin):
+        flag = False
+        if not isinstance(node_fin,list):
+            node_fin = [node_fin]
+            flag = True
         if self.isdag():
-            return self.dagpath(node_start,node_fin) # dag shortest path O(|V|+|E|)
+            result = self.dagpath(node_start,node_fin) # dag shortest path O(|V|+|E|)
         else:
             if self.ispositive(): # dijkstra for positive edges O(|V|log|V| + |E|)
-                return self.dijkstra(node_start,node_fin)   
-            return self.ford_fulkerson(node_start,node_fin) 
-    
+                result = self.dijkstra(node_start,node_fin)   
+            else:
+                result = self.ford_fulkerson(node_start,node_fin) 
+        if flag:
+            return result[0]
+        else:
+            return result
     def nodes(self):
         return self.__nodes.copy()
         
