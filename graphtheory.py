@@ -339,7 +339,7 @@ class directed_graph:
             Use for finding shortest path in in a graph with positive edge
             weights containing cycles.
             Priority queue is implemented with a binary heap, resulting in 
-            a complexity of O(VlogV)
+            a complexity of O((V+E)logV)
             node_fin is assumed to be a list of nodes, and 
             node_start is assumed to be a single node
         '''
@@ -384,7 +384,7 @@ class directed_graph:
         if self.isdag():
             result = self.dagpath(node_start,node_fin) # dag shortest path O(|V|+|E|)
         else:
-            if self.ispositive(): # dijkstra for positive edges O(|V|log|V| + |E|)
+            if self.ispositive(): # dijkstra for positive edges O((|V|+ |E|)log|V|)
                 result = self.dijkstra(node_start,node_fin)   
             else:
                 result = self.ford_fulkerson(node_start,node_fin) 
