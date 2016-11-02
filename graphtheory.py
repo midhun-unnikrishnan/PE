@@ -373,8 +373,8 @@ class directed_graph:
             result.append((total,path))
         return result
         
-    def ford_fulkerson(self,nodestart,node_fin):
-        ''' Ford-Fulkerson algorithm for graphs with cycles and negative
+    def bellman_ford(self,nodestart,node_fin):
+        ''' Bellman-Ford algorithm for graphs with cycles and negative
         edges. Throws if a negative cycle is found
         '''
         
@@ -429,7 +429,7 @@ class directed_graph:
             if self.ispositive(): # dijkstra for positive edges O((|V|+|E|)log|V|)
                 result = self.dijkstra(node_start,node_fin)   
             else:
-                result = self.ford_fulkerson(node_start,node_fin) 
+                result = self.bellman_ford(node_start,node_fin) 
         if flag:
             return result[0]
         else:
