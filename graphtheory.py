@@ -14,26 +14,26 @@ class directed_graph:
     Node names can be any dictionary key type, and the entire information
     is represented as a two-level nested dictionary.
     '''
-    __nodes = []
-    __nodetoN = dict()
-    __accepted_leaftypes = [Number] # consider including lists
-    __isdag = None # is the graph acyclic
-    __istree = None # is the graph a tree
-    __ispositive = None # are all edge weights positive
-    __istopsorted = False # if the graph is acyclic, is self.__nodes in
-                         # topological order
-    __dfslog = {}
-    
-    # multiple-edges between two nodes are currently represented using weightings
-    # on edges, viz. the leaf n represents n edges. The class currently does
-    # not support multiple, weighted edges - not that I can conceive of an application
-    # for these
-    
+        
     def __init__(self,node2N:dict={}):
         '''warning: constructor takes argument by reference, and may
         modify it into a standard input format - send explicit object
         by using dict.copy() if this is to be avoided.
         '''
+        self.__nodes = []
+        self.__nodetoN = dict()
+        self.__accepted_leaftypes = [Number] # consider including lists
+        self.__isdag = None # is the graph acyclic
+        self.__istree = None # is the graph a tree
+        self.__ispositive = None # are all edge weights positive
+        self.__istopsorted = False # if the graph is acyclic, is self.__nodes in
+                             # topological order
+        self.__dfslog = {}
+        # multiple-edges between two nodes are currently represented using weightings
+        # on edges, viz. the leaf n represents n edges. The class currently does
+        # not support multiple, weighted edges - not that I can conceive of an application
+        # for these
+
         self.addnodes(node2N)
         
     def empty(self):
@@ -339,7 +339,7 @@ class directed_graph:
             Use for finding shortest path in in a graph with positive edge
             weights containing cycles.
             Priority queue is implemented with a binary heap, resulting in 
-            a complexity of O((V+E)logV)
+            a complexity of O(VlogV)
             node_fin is assumed to be a list of nodes, and 
             node_start is assumed to be a single node
         '''
@@ -373,8 +373,50 @@ class directed_graph:
             result.append((total,path))
         return result
         
-    def ford_fulkerson(self,node_start,node_fin):
-        raise Exception('FF not implemented')
+    def ford_fulkerson(self,nodestart,node_fin):
+        ''' Ford-Fulkerson algorithm for graphs with cycles and negative
+        edges. Throws if a negative cycle is found
+        '''
+        
+        nodes = sorted(self.__nodes)
+        
+        # change edge representation
+        edges = {}
+        for node in nodes:
+            for node2,weight in self.__nodetoN[node].items():
+                edges[(node,node2)] = weight
+                
+        dist = {x:np.inf for x in nodes}
+        dist[nodestart] = 0
+        prev = {x:None for x in nodes}
+        
+        for x in range(len(nodes)-1):
+            for edge,weight in edges.items():
+                ecan = dist[edge[0]] + weight
+                if ecan < dist[edge[1]]:
+                    dist[edge[1]] = ecan
+                    prev[edge[1]] = edge[0]
+                
+        flag = True
+        for edge,weight in edges.items():
+            ecan = dist[edge[0]] + weight
+            if ecan < dist[edge[1]]:
+                flag = False
+                break
+            
+        if flag:
+            result = []
+            for nf in node_fin:
+                total = dist[nf]
+                path = [nf]
+                while path[-1] != nodestart:
+                    path.append(prev[path[-1]])
+                path.reverse()
+                result.append((total,path))
+            return result 
+        else:
+            raise Exception('Negative cycle found')
+    
         
     def shortest_path(self,node_start,node_fin):
         flag = False
@@ -384,7 +426,7 @@ class directed_graph:
         if self.isdag():
             result = self.dagpath(node_start,node_fin) # dag shortest path O(|V|+|E|)
         else:
-            if self.ispositive(): # dijkstra for positive edges O((|V|+ |E|)log|V|)
+            if self.ispositive(): # dijkstra for positive edges O((|V|+|E|)log|V|)
                 result = self.dijkstra(node_start,node_fin)   
             else:
                 result = self.ford_fulkerson(node_start,node_fin) 
